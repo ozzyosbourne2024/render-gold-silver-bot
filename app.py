@@ -13,5 +13,11 @@ def health():
 
 @app.route("/gold")
 def gold():
-    # Örnek API veya string
+    # Örnek: Sabit altın fiyatı. 
+    # Daha sonra gerçek API ile değiştirebilirsin
     return jsonify({"price": 2000})
+
+# Bu satır hem local test hem de Render prod ile uyumlu
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
+
