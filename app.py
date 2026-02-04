@@ -1,22 +1,19 @@
 from flask import Flask, jsonify
-import requests
 import pandas as pd
-from ta.momentum import RSIIndicator
 import time
+import yfinance as yf
+from ta.momentum import RSIIndicator
 
 app = Flask(__name__)
 
-ALPHA_API_KEY = "ZMCPF2U2C6A35FJ9"
-FALLBACK_PRICE = 2000
-
-# Cache: son veri ve zamanı
+# Cache: fiyat ve RSI
 cache = {
     "timestamp": 0,
-    "price": FALLBACK_PRICE,
-    "rsi": None
+    "price": 2000,  # fallback
+    "RSI_4h": None
 }
 
-CACHE_TTL = 60  # saniye
+CACHE_TTL = 60 * 60  # 1 saat: 4H için yeterli
 
 @app.route("/")
 def home():
@@ -29,63 +26,46 @@ def health():
 @app.route("/gold")
 def gold():
     current_time = time.time()
-    
+
     # Cache geçerli ise direkt dön
     if current_time - cache["timestamp"] < CACHE_TTL:
         return jsonify({
             "price": cache["price"],
-            "RSI_4h": cache["rsi"],
+            "RSI_4h": cache["RSI_4h"],
             "warning": "Cache kullanıldı"
         })
 
+    # Fiyat verisini yfinance ile al
     try:
-        url = f"https://www.alphavantage.co/query?function=FX_INTRADAY&from_symbol=XAU&to_symbol=USD&interval=60min&apikey={ALPHA_API_KEY}&outputsize=compact"
+        # XAU/USD 4H, son 100 bar
+        data = yf.download("XAUUSD=X", interval="4h", period="30d")
+        if data.empty:
+            raise Exception("Veri alınamadı")
 
-        # 3 defa retry
-        for attempt in range(3):
-            r = requests.get(url, timeout=10)
-            if r.status_code == 200:
-                data = r.json()
-                break
-            time.sleep(5)
-        else:
-            raise Exception("AlphaVantage veri alınamadı (retry limit aşıldı)")
+        close_prices = data['Close']
+        latest_price = round(close_prices[-1], 2)
 
-        if "Time Series FX (60min)" not in data:
-            raise Exception("AlphaVantage JSON format hatası")
-
-        time_series = data["Time Series FX (60min)"]
-
-        # 1H kapanış fiyatları
-        df = pd.DataFrame([float(v["4. close"]) for k, v in sorted(time_series.items())], columns=['close'])
-
-        # 4H mumlar için 4’lü grup
-        df_4h = df.groupby(df.index // 4).last()
-        if len(df_4h) < 14:
-            raise Exception("Yeterli veri yok, RSI hesaplanamadı")
-
-        rsi = RSIIndicator(close=df_4h['close'], window=14).rsi()
-        latest_price = round(df_4h['close'].iloc[-1], 2)
-        latest_rsi = round(rsi.iloc[-1], 2)
+        # RSI hesapla (14 periyot)
+        rsi = RSIIndicator(close=close_prices, window=14).rsi()
+        latest_rsi = round(rsi[-1], 2)
 
         # Cache güncelle
-        cache["timestamp"] = current_time
         cache["price"] = latest_price
-        cache["rsi"] = latest_rsi
-
-        return jsonify({"price": latest_price, "RSI_4h": latest_rsi})
-
-    except Exception as e:
-        # Fallback + cache güncelle
-        cache["timestamp"] = current_time
-        cache["price"] = FALLBACK_PRICE
-        cache["rsi"] = None
+        cache["RSI_4h"] = latest_rsi
+        cache["timestamp"] = time.time()
 
         return jsonify({
-            "price": FALLBACK_PRICE,
-            "RSI_4h": None,
-            "warning": str(e)
-        }), 200
+            "price": latest_price,
+            "RSI_4h": latest_rsi
+        })
+
+    except Exception as e:
+        # Fallback
+        return jsonify({
+            "price": cache["price"],
+            "RSI_4h": cache["RSI_4h"],
+            "warning": f"Veri alınamadı: {str(e)}"
+        })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
