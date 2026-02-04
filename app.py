@@ -16,13 +16,16 @@ def health():
 @app.route("/gold")
 def gold():
     try:
-        # Binance API 4H mumlar
-        url = "https://api.binance.com/api/v3/klines?symbol=XAUUSD_PERP&interval=4h&limit=100"
+        # Binance API 4H mumlar (XAUUSDT)
+        url = "https://api.binance.com/api/v3/klines?symbol=XAUUSDT&interval=4h&limit=100"
         r = requests.get(url)
         r.raise_for_status()
         data = r.json()
 
-        # Kapanış fiyatlarını al
+        if not data or len(data) == 0:
+            return jsonify({"error": "Veri alınamadı", "details": "Boş veri geldi"}), 500
+
+        # Kapanış fiyatları
         close_prices = [float(candle[4]) for candle in data]
         df = pd.DataFrame(close_prices, columns=['close'])
 
@@ -36,6 +39,6 @@ def gold():
     except Exception as e:
         return jsonify({"error": "Veri alınamadı", "details": str(e)}), 500
 
+# Local test ve prod uyumlu
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
-
