@@ -29,6 +29,7 @@ def health():
 @app.route("/gold")
 def gold():
     current_time = time.time()
+    
     # Cache geçerli ise direkt dön
     if current_time - cache["timestamp"] < CACHE_TTL:
         return jsonify({
@@ -75,7 +76,7 @@ def gold():
         return jsonify({"price": latest_price, "RSI_4h": latest_rsi})
 
     except Exception as e:
-        # Hata durumunda fallback
+        # Fallback + cache güncelle
         cache["timestamp"] = current_time
         cache["price"] = FALLBACK_PRICE
         cache["rsi"] = None
