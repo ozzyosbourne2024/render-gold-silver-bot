@@ -1,7 +1,4 @@
 flask
 requests
-gunicorn
 pandas
 ta
-beautifulsoup4
-lxml
