@@ -1,6 +1,5 @@
 from flask import Flask, jsonify
 import requests
-from bs4 import BeautifulSoup
 import pandas as pd
 from ta.momentum import RSIIndicator
 
@@ -17,38 +16,24 @@ def health():
 @app.route("/gold")
 def gold():
     try:
-        # Investing.com XAUUSD Historical Data (4H)
-        url = "https://www.investing.com/instruments/HistoricalDataAjax"
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "X-Requested-With": "XMLHttpRequest"
-        }
+        # Binance API 4H mumlar
+        url = "https://api.binance.com/api/v3/klines"
         params = {
-            "curr_id": "8830",        # XAUUSD ID
-            "smlID": "20332",
-            "header": "XAU/USD Historical Data",
-            "st_date": "01/01/2026",  # Başlangıç tarihi (dd/mm/yyyy)
-            "end_date": "04/02/2026", # Bitiş tarihi
-            "interval_sec": "Hourly", # 4H yok, en yakın 1H alıyoruz
-            "sort_col": "date",
-            "sort_ord": "DESC",
-            "action": "historical_data"
+            "symbol": "XAUUSD_PERP",
+            "interval": "4h",
+            "limit": 100
         }
+        r = requests.get(url)
+        data = r.json()
 
-        r = requests.post(url, headers=headers, data=params)
-        soup = BeautifulSoup(r.text, "lxml")
-        table = soup.find("table")
-        df = pd.read_html(str(table))[0]
+        # Kapanış fiyatlarını al
+        close_prices = [float(candle[4]) for candle in data]
+        df = pd.DataFrame(close_prices, columns=['close'])
 
-        # Kapanış fiyatlarını float yap
-        df['Price'] = df['Price'].str.replace(',', '').astype(float)
-        close_prices = df['Price']
-
-        # RSI hesapla (14 periyotluk)
-        rsi = RSIIndicator(close=close_prices, window=14).rsi()
-
-        latest_price = round(close_prices.iloc[0], 2)
-        latest_rsi = round(rsi.iloc[0], 2)
+        # RSI hesapla (14 periyot)
+        rsi = RSIIndicator(close=df['close'], window=14).rsi()
+        latest_price = round(df['close'].iloc[-1], 2)
+        latest_rsi = round(rsi.iloc[-1], 2)
 
         return jsonify({"price": latest_price, "RSI_4h": latest_rsi})
 
