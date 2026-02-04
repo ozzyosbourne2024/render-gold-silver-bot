@@ -5,6 +5,8 @@ from ta.momentum import RSIIndicator
 
 app = Flask(__name__)
 
+ALPHA_API_KEY = "ZMCPF2U2C6A35FJ9"  # AlphaVantage API key
+
 @app.route("/")
 def home():
     return "Bot çalışıyor 🚀"
@@ -16,22 +18,28 @@ def health():
 @app.route("/gold")
 def gold():
     try:
-        # Binance API 4H mumlar (XAUUSDT)
-        url = "https://api.binance.com/api/v3/klines?symbol=XAUUSDT&interval=4h&limit=100"
-        r = requests.get(url)
+        # AlphaVantage FX_INTRADAY 1H XAU/USD
+        url = f"https://www.alphavantage.co/query?function=FX_INTRADAY&from_symbol=XAU&to_symbol=USD&interval=60min&apikey={ALPHA_API_KEY}&outputsize=compact"
+        r = requests.get(url, timeout=10)
         r.raise_for_status()
         data = r.json()
 
-        if not data or len(data) == 0:
-            return jsonify({"error": "Veri alınamadı", "details": "Boş veri geldi"}), 500
+        if "Time Series FX (60min)" not in data:
+            return jsonify({"error": "Veri alınamadı", "details": "AlphaVantage JSON format hatası"}), 500
 
-        # Kapanış fiyatları
-        close_prices = [float(candle[4]) for candle in data]
-        df = pd.DataFrame(close_prices, columns=['close'])
+        time_series = data["Time Series FX (60min)"]
 
-        # RSI hesapla (14 periyot)
-        rsi = RSIIndicator(close=df['close'], window=14).rsi()
-        latest_price = round(df['close'].iloc[-1], 2)
+        # 1H kapanış fiyatları, eski -> yeni
+        df = pd.DataFrame([float(v["4. close"]) for k, v in sorted(time_series.items())], columns=['close'])
+
+        # 4H mum oluşturmak için 4’lü gruplar (son fiyatı al)
+        df_4h = df.groupby(df.index // 4).last()
+        if len(df_4h) < 14:
+            return jsonify({"error": "Yetersiz veri", "details": "RSI için yeterli mum yok"}), 500
+
+        # RSI 14 periyot
+        rsi = RSIIndicator(close=df_4h['close'], window=14).rsi()
+        latest_price = round(df_4h['close'].iloc[-1], 2)
         latest_rsi = round(rsi.iloc[-1], 2)
 
         return jsonify({"price": latest_price, "RSI_4h": latest_rsi})
@@ -39,6 +47,6 @@ def gold():
     except Exception as e:
         return jsonify({"error": "Veri alınamadı", "details": str(e)}), 500
 
-# Local test ve prod uyumlu
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
