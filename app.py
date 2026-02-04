@@ -9,14 +9,14 @@ app = Flask(__name__)
 ALPHA_API_KEY = "ZMCPF2U2C6A35FJ9"
 FALLBACK_PRICE = 2000
 
-# Cache mekanizması: son veri ve zaman
+# Cache: son veri ve zamanı
 cache = {
     "timestamp": 0,
     "price": FALLBACK_PRICE,
     "rsi": None
 }
 
-CACHE_TTL = 60  # saniye, 1 dakika cache
+CACHE_TTL = 60  # saniye
 
 @app.route("/")
 def home():
@@ -29,7 +29,7 @@ def health():
 @app.route("/gold")
 def gold():
     current_time = time.time()
-    # Cache geçerli ise doğrudan dön
+    # Cache geçerli ise direkt dön
     if current_time - cache["timestamp"] < CACHE_TTL:
         return jsonify({
             "price": cache["price"],
@@ -40,7 +40,8 @@ def gold():
     try:
         url = f"https://www.alphavantage.co/query?function=FX_INTRADAY&from_symbol=XAU&to_symbol=USD&interval=60min&apikey={ALPHA_API_KEY}&outputsize=compact"
 
-        for attempt in range(3):  # 3 defa dene
+        # 3 defa retry
+        for attempt in range(3):
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 data = r.json()
@@ -54,10 +55,10 @@ def gold():
 
         time_series = data["Time Series FX (60min)"]
 
-        # 1H kapanış fiyatları, eski -> yeni
+        # 1H kapanış fiyatları
         df = pd.DataFrame([float(v["4. close"]) for k, v in sorted(time_series.items())], columns=['close'])
 
-        # 4H mum oluştur
+        # 4H mumlar için 4’lü grup
         df_4h = df.groupby(df.index // 4).last()
         if len(df_4h) < 14:
             raise Exception("Yeterli veri yok, RSI hesaplanamadı")
@@ -74,7 +75,7 @@ def gold():
         return jsonify({"price": latest_price, "RSI_4h": latest_rsi})
 
     except Exception as e:
-        # Hata durumunda fallback + cache güncelle
+        # Hata durumunda fallback
         cache["timestamp"] = current_time
         cache["price"] = FALLBACK_PRICE
         cache["rsi"] = None
