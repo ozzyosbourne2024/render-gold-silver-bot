@@ -17,13 +17,9 @@ def health():
 def gold():
     try:
         # Binance API 4H mumlar
-        url = "https://api.binance.com/api/v3/klines"
-        params = {
-            "symbol": "XAUUSD_PERP",
-            "interval": "4h",
-            "limit": 100
-        }
+        url = "https://api.binance.com/api/v3/klines?symbol=XAUUSD_PERP&interval=4h&limit=100"
         r = requests.get(url)
+        r.raise_for_status()
         data = r.json()
 
         # Kapanış fiyatlarını al
@@ -42,3 +38,4 @@ def gold():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
